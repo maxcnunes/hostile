@@ -12,6 +12,11 @@ exports.HOSTS = WINDOWS
   ? 'C:/Windows/System32/drivers/etc/hosts'
   : '/etc/hosts'
 
+exports.blockCommentEnabled = true
+exports.blockCommentTitle = 'HOSTILE'
+var blockCommentHeader = '#### BEGIN - ' + exports.blockCommentTitle + ' ####'
+var blockCommentFooter = '#### END --- ' + exports.blockCommentTitle + ' ####'
+
 /**
  * Get a list of the lines that make up the /etc/hosts file. If the
  * `preserveFormatting` parameter is true, then include comments, blank lines
@@ -54,10 +59,23 @@ exports.get = function (preserveFormatting, cb) {
  */
 exports.set = function (ip, host, cb) {
   exports.get(true, function (err, lines) {
+    var blockExists = false
+    var blockFooterIndex = -1
+    var lineIndex = -1
 
     // Try to update entry, if host already exists in file
     var didUpdate = false
     lines = lines.map(function (line) {
+      lineIndex++
+
+      if (blockCommentsExists(line, blockExists)) {
+        blockExists = true
+      }
+
+      if (line === blockCommentFooter) {
+        blockFooterIndex = lineIndex
+      }
+
       if (Array.isArray(line) && line[1] === host) {
         line[0] = ip
         didUpdate = true
@@ -65,9 +83,21 @@ exports.set = function (ip, host, cb) {
       return line
     })
 
+    if (!blockExists) {
+      lines.push(blockCommentHeader)
+    }
+
     // If entry did not exist, let's add it
     if (!didUpdate) {
-      lines.push([ip, host])
+      if (blockFooterIndex !== -1) {
+        lines.splice(blockFooterIndex - 1, 0, [ip, host])
+      } else {
+        lines.push([ip, host])
+      }
+    }
+
+    if (!blockExists) {
+      lines.push(blockCommentFooter)
     }
 
     exports.writeFile(lines, cb)
@@ -119,4 +149,10 @@ exports.writeFile = function (lines, cb) {
     })
     s.end()
   })
+}
+
+var blockCommentsExists = function (line, blockExists) {
+  return !blockExists 
+          && exports.blockCommentEnabled 
+          && line === blockCommentHeader
 }
